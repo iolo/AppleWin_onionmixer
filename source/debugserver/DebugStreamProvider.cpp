@@ -239,7 +239,7 @@ std::vector<std::string> DebugStreamProvider::GetFullSnapshot() {
     std::lock_guard<std::mutex> lock(m_mutex);
     std::vector<std::string> lines;
 
-    // Machine info
+    // ===== Machine info =====
     const char* machineType = "Unknown";
     switch (GetApple2Type()) {
         case A2TYPE_APPLE2:      machineType = "Apple2"; break;
@@ -247,22 +247,55 @@ std::vector<std::string> DebugStreamProvider::GetFullSnapshot() {
         case A2TYPE_APPLE2JPLUS: machineType = "Apple2JPlus"; break;
         case A2TYPE_APPLE2E:     machineType = "Apple2e"; break;
         case A2TYPE_APPLE2EENHANCED: machineType = "Apple2eEnhanced"; break;
+        case A2TYPE_APPLE2C:     machineType = "Apple2c"; break;
+        case A2TYPE_PRAVETS82:   machineType = "Pravets82"; break;
+        case A2TYPE_PRAVETS8M:   machineType = "Pravets8M"; break;
+        case A2TYPE_PRAVETS8A:   machineType = "Pravets8A"; break;
+        case A2TYPE_TK30002E:    machineType = "TK30002e"; break;
+        case A2TYPE_BASE64A:     machineType = "Base64A"; break;
         default: break;
     }
     lines.push_back(FormatLine("mach", "info", "type", machineType));
 
-    // Machine status
+    // ===== CPU type (NEW - from 65501) =====
+    const char* cpuType = "Unknown";
+    switch (GetMainCpu()) {
+        case CPU_6502:  cpuType = "6502"; break;
+        case CPU_65C02: cpuType = "65C02"; break;
+        case CPU_Z80:   cpuType = "Z80"; break;
+        default: break;
+    }
+    lines.push_back(FormatLine("mach", "info", "cpuType", cpuType));
+
+    // ===== Memory mode (get early for videoMode calculation) =====
+    UINT memMode = GetMemMode();
+
+    // ===== Video mode (NEW - from 65501) =====
+    const char* videoMode = "Unknown";
+    if (memMode & MF_HIRES) {
+        videoMode = (memMode & MF_80STORE) ? "DoubleHiRes" : "HiRes";
+    } else {
+        videoMode = (memMode & MF_80STORE) ? "80ColText" : "TextLoRes";
+    }
+    lines.push_back(FormatLine("mach", "info", "videoMode", videoMode));
+
+    // ===== Machine status =====
     const char* mode = "unknown";
     switch (g_nAppMode) {
-        case MODE_RUNNING: mode = "running"; break;
-        case MODE_DEBUG:   mode = "debug"; break;
-        case MODE_STEPPING: mode = "stepping"; break;
-        case MODE_PAUSED:  mode = "paused"; break;
+        case MODE_LOGO:      mode = "logo"; break;
+        case MODE_RUNNING:   mode = "running"; break;
+        case MODE_DEBUG:     mode = "debug"; break;
+        case MODE_STEPPING:  mode = "stepping"; break;
+        case MODE_PAUSED:    mode = "paused"; break;
+        case MODE_BENCHMARK: mode = "benchmark"; break;
         default: break;
     }
     lines.push_back(FormatLine("mach", "status", "mode", mode));
 
-    // CPU registers
+    // ===== Cumulative cycles (NEW - from 65501) =====
+    lines.push_back(FormatLine("mach", "info", "cycles", std::to_string(g_nCumulativeCycles)));
+
+    // ===== CPU registers =====
     lines.push_back(FormatLine("cpu", "reg", "a", ToHex8(regs.a)));
     lines.push_back(FormatLine("cpu", "reg", "x", ToHex8(regs.x)));
     lines.push_back(FormatLine("cpu", "reg", "y", ToHex8(regs.y)));
@@ -270,7 +303,7 @@ std::vector<std::string> DebugStreamProvider::GetFullSnapshot() {
     lines.push_back(FormatLine("cpu", "reg", "sp", ToHex8(static_cast<uint8_t>(regs.sp & 0xFF))));
     lines.push_back(FormatLine("cpu", "reg", "p", ToHex8(regs.ps)));
 
-    // CPU flags
+    // ===== CPU flags =====
     uint8_t ps = regs.ps;
     lines.push_back(FormatLine("cpu", "flag", "n", (ps & AF_SIGN) ? "1" : "0"));
     lines.push_back(FormatLine("cpu", "flag", "v", (ps & AF_OVERFLOW) ? "1" : "0"));
@@ -280,12 +313,22 @@ std::vector<std::string> DebugStreamProvider::GetFullSnapshot() {
     lines.push_back(FormatLine("cpu", "flag", "z", (ps & AF_ZERO) ? "1" : "0"));
     lines.push_back(FormatLine("cpu", "flag", "c", (ps & AF_CARRY) ? "1" : "0"));
 
-    // CPU state
+    // ===== CPU state =====
     lines.push_back(FormatLine("cpu", "state", "jammed", regs.bJammed ? "1" : "0"));
 
-    // Memory mode
-    UINT memMode = GetMemMode();
+    // ===== Memory bank mode =====
     lines.push_back(FormatLine("mem", "bank", "mode", ToHex8(static_cast<uint8_t>(memMode & 0xFF))));
+
+    // ===== Memory flags (NEW - from 65501) =====
+    lines.push_back(FormatLine("mem", "flag", "80store", (memMode & MF_80STORE) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "auxRead", (memMode & MF_AUXREAD) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "auxWrite", (memMode & MF_AUXWRITE) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "altZP", (memMode & MF_ALTZP) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "highRam", (memMode & MF_HIGHRAM) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "bank2", (memMode & MF_BANK2) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "writeRam", (memMode & MF_WRITERAM) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "page2", (memMode & MF_PAGE2) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "hires", (memMode & MF_HIRES) ? "1" : "0"));
 
     return lines;
 }
