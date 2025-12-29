@@ -44,6 +44,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include "../Memory.h"
 #include "../NTSC.h"
 #include "../SoundCore.h"	// SoundCore_SetFade()
+#include "../debugserver/DebugServerManager.h"  // Debug stream server
 
 //	#define DEBUG_COMMAND_HELP  1
 //	#define DEBUG_ASM_HASH 1
@@ -9099,6 +9100,17 @@ void DebugContinueStepping (const bool bCallerWillUpdateDisplay/*=false*/)
 			SingleStep(g_bGoCmd_ReinitFlag);
 			g_bGoCmd_ReinitFlag = false;
 
+			// Debug stream: broadcast CPU registers after step
+			if (DebugServer_IsStreamEnabled())
+			{
+				auto& manager = debugserver::DebugServerManager::GetInstance();
+				auto* provider = manager.GetStreamProvider();
+				if (provider && manager.GetStreamServer() && manager.GetStreamServer()->GetClientCount() > 0)
+				{
+					manager.BroadcastStreamData(provider->GetCPURegisters());
+				}
+			}
+
 			if (IsInterruptInLastExecution())
 			{
 				g_LBR = oldPC;
@@ -9172,6 +9184,21 @@ void DebugContinueStepping (const bool bCallerWillUpdateDisplay/*=false*/)
 
 				std::string hitId = GetBreakpointHitIdString(g_breakpointHitID);
 				ConsolePrintFormat(CHC_INFO "Stop reason: %s " CHC_DEFAULT "%s", hitId.c_str(), stopReason.c_str());
+
+				// Debug stream: broadcast breakpoint hit event
+				if (DebugServer_IsStreamEnabled() && g_bDebugBreakpointHit)
+				{
+					auto& manager = debugserver::DebugServerManager::GetInstance();
+					auto* provider = manager.GetStreamProvider();
+					if (provider && manager.GetStreamServer() && manager.GetStreamServer()->GetClientCount() > 0)
+					{
+						int bpIndex = (g_breakpointHitID >= 0) ? g_breakpointHitID : 0;
+						manager.BroadcastStreamData(provider->GetBreakpointHit(bpIndex, regs.pc));
+						// Also send current machine status
+						manager.BroadcastStreamData(provider->GetMachineStatus("break"));
+					}
+				}
+
 				g_breakpointHitID = -1;
 			}
 

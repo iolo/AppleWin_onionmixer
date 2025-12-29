@@ -1,17 +1,21 @@
-# AppleWin Debug HTTP Server
+# AppleWin Debug Server
 
-HTTP-based debugging interface for AppleWin emulator.
+HTTP and Telnet-based debugging interface for AppleWin emulator.
 
 ## Features
 
 - **No external dependencies** - Pure C++17 implementation
 - **GPL-2.0 License** - Compatible with AppleWin
 - **Cross-platform** - Works on Linux (POSIX) and Windows (Winsock)
-- **4 separate debug ports** for different information categories
+- **4 HTTP ports** for pull-based debug information
+- **1 Stream port** for push-based real-time streaming
 - **JSON API** - Easy integration with external tools
 - **HTML Dashboard** - Real-time browser-based monitoring
+- **JSON Lines Streaming** - Real-time event streaming via Telnet
 
 ## Server Ports
+
+### HTTP Servers (Pull-based)
 
 | Port  | Provider         | Description                         |
 |-------|------------------|-------------------------------------|
@@ -19,6 +23,14 @@ HTTP-based debugging interface for AppleWin emulator.
 | 65502 | IOInfo           | Soft switches, slot cards, annunciators |
 | 65503 | CPUInfo          | Registers, flags, breakpoints, disasm |
 | 65504 | MemoryInfo       | Memory dumps, zero page, stack      |
+
+### Stream Server (Push-based)
+
+| Port  | Protocol | Description                              |
+|-------|----------|------------------------------------------|
+| 65505 | Telnet   | Real-time JSON Lines debug streaming     |
+
+The stream server outputs data according to the **OUTPUT_SPEC_V01** specification with `"emu":"apple"` identifier.
 
 ## Integration with AppleWin
 
@@ -62,10 +74,13 @@ void InitializeEmulator() {
     MemInitialize();
     CpuInitialize();
 
-    // Start debug server
+    // Start debug server (HTTP ports 65501-65504, Stream port 65505)
     if (DebugServer_Start()) {
-        printf("Debug server started on ports 65501-65504\n");
+        printf("Debug server started on ports 65501-65505\n");
     }
+
+    // Enable streaming (optional, can be enabled later)
+    DebugServer_SetStreamEnabled(true);
 
     // ... rest of initialization ...
 }
@@ -163,6 +178,46 @@ GET /api/stack           - Stack page dump
 GET /api/textscreen      - Text screen contents
 ```
 
+### Stream Server (Port 65505)
+
+The stream server provides real-time push-based debug information via Telnet protocol.
+
+**Connection:**
+```bash
+telnet 127.0.0.1 65505
+# or
+nc 127.0.0.1 65505
+```
+
+**Output Format (JSON Lines):**
+```json
+{"emu":"apple","cat":"sys","sec":"conn","fld":"hello","val":"1.0","ts":1704067200000}
+{"emu":"apple","cat":"mach","sec":"info","fld":"type","val":"Apple2e"}
+{"emu":"apple","cat":"cpu","sec":"reg","fld":"all","val":"A=00 X=00 Y=00 SP=FF PC=C600","ts":...}
+{"emu":"apple","cat":"dbg","sec":"bp","fld":"hit","val":"0","addr":"C600","ts":...}
+```
+
+**Categories:**
+| cat | Description | Sections |
+|-----|-------------|----------|
+| `sys` | System messages | `conn` (hello/goodbye) |
+| `mach` | Machine info | `info`, `status` |
+| `cpu` | CPU state | `reg`, `flags`, `state` |
+| `mem` | Memory access | `access`, `bank` |
+| `dbg` | Debug events | `bp`, `trace` |
+
+**C API for Broadcasting:**
+```cpp
+// Enable/disable streaming
+DebugServer_SetStreamEnabled(true);
+
+// Check if streaming is active
+if (DebugServer_IsStreamEnabled()) {
+    // Broadcast custom data to all clients
+    DebugServer_BroadcastStream("{\"emu\":\"apple\",\"cat\":\"custom\",...}");
+}
+```
+
 ## Configuration
 
 ### Bind Address
@@ -189,18 +244,22 @@ if (DebugServer_IsEnabled()) { ... }
 
 ```
 source/debugserver/
-├── HttpRequest.h/cpp       - HTTP request parser
-├── HttpResponse.h/cpp      - HTTP response builder
-├── HttpServer.h/cpp        - TCP socket server
-├── JsonBuilder.h/cpp       - JSON generator
-├── SimpleTemplate.h/cpp    - HTML template engine
-├── InfoProvider.h/cpp      - Base provider interface
+├── HttpRequest.h/cpp         - HTTP request parser
+├── HttpResponse.h/cpp        - HTTP response builder
+├── HttpServer.h/cpp          - TCP socket server
+├── JsonBuilder.h/cpp         - JSON generator
+├── SimpleTemplate.h/cpp      - HTML template engine
+├── InfoProvider.h/cpp        - Base provider interface
 ├── MachineInfoProvider.h/cpp
 ├── CPUInfoProvider.h/cpp
 ├── IOInfoProvider.h/cpp
 ├── MemoryInfoProvider.h/cpp
-├── DebugServerManager.h/cpp - Main manager (singleton)
-└── CMakeLists.txt
+├── TelnetStreamServer.h/cpp  - Telnet stream server (port 65505)
+├── DebugStreamProvider.h/cpp - JSON Lines formatter (OUTPUT_SPEC_V01)
+├── DebugServerManager.h/cpp  - Main manager (singleton)
+├── CMakeLists.txt
+├── README.md                 - This file
+└── INTEGRATION.md            - Integration guide
 ```
 
 ## Building

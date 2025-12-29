@@ -7,6 +7,9 @@ set(DEBUGSERVER_SOURCES
     HttpRequest.cpp
     HttpResponse.cpp
     HttpServer.cpp
+    # Telnet Stream Server
+    TelnetStreamServer.cpp
+    DebugStreamProvider.cpp
     # Utilities
     JsonBuilder.cpp
     SimpleTemplate.cpp
@@ -25,6 +28,9 @@ set(DEBUGSERVER_HEADERS
     HttpRequest.h
     HttpResponse.h
     HttpServer.h
+    # Telnet Stream Server
+    TelnetStreamServer.h
+    DebugStreamProvider.h
     # Utilities
     JsonBuilder.h
     SimpleTemplate.h

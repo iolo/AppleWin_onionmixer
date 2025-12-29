@@ -29,11 +29,13 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #pragma once
 
 #include "HttpServer.h"
+#include "TelnetStreamServer.h"
 #include "InfoProvider.h"
 #include "MachineInfoProvider.h"
 #include "CPUInfoProvider.h"
 #include "IOInfoProvider.h"
 #include "MemoryInfoProvider.h"
+#include "DebugStreamProvider.h"
 
 #include <memory>
 #include <vector>
@@ -100,6 +102,17 @@ public:
     InfoProvider* GetIOInfoProvider() { return m_ioProvider.get(); }
     InfoProvider* GetMemoryInfoProvider() { return m_memoryProvider.get(); }
 
+    // Stream server access
+    TelnetStreamServer* GetStreamServer() { return m_streamServer.get(); }
+    DebugStreamProvider* GetStreamProvider() { return m_streamProvider.get(); }
+
+    // Stream server control
+    void SetStreamEnabled(bool enabled) { m_streamEnabled = enabled; }
+    bool IsStreamEnabled() const { return m_streamEnabled; }
+
+    // Broadcast data to all connected stream clients
+    void BroadcastStreamData(const std::string& data);
+
 private:
     // Private constructor for singleton
     DebugServerManager();
@@ -110,6 +123,7 @@ private:
 
     // Configuration
     bool m_enabled;
+    bool m_streamEnabled;
     std::string m_bindAddress;
     std::atomic<bool> m_running;
     std::string m_lastError;
@@ -120,11 +134,17 @@ private:
     std::unique_ptr<IOInfoProvider> m_ioProvider;
     std::unique_ptr<MemoryInfoProvider> m_memoryProvider;
 
+    // Stream Provider
+    std::unique_ptr<DebugStreamProvider> m_streamProvider;
+
     // HTTP Servers
     std::unique_ptr<HttpServer> m_machineServer;
     std::unique_ptr<HttpServer> m_cpuServer;
     std::unique_ptr<HttpServer> m_ioServer;
     std::unique_ptr<HttpServer> m_memoryServer;
+
+    // Telnet Stream Server
+    std::unique_ptr<TelnetStreamServer> m_streamServer;
 };
 
 } // namespace debugserver
@@ -146,3 +166,10 @@ bool DebugServer_IsRunning(void);
 // Enable/disable debug server feature
 void DebugServer_SetEnabled(bool enabled);
 bool DebugServer_IsEnabled(void);
+
+// Enable/disable debug stream server
+void DebugServer_SetStreamEnabled(bool enabled);
+bool DebugServer_IsStreamEnabled(void);
+
+// Broadcast data to all connected stream clients
+void DebugServer_BroadcastStream(const char* data);

@@ -87,7 +87,8 @@ enum class DebugServerPort : uint16_t {
     Machine = 65501,    // Machine info (Apple2 type, mode, speed, etc.)
     IO      = 65502,    // I/O info (soft switches, slot cards)
     CPU     = 65503,    // CPU info (registers, flags, breakpoints)
-    Memory  = 65504     // Memory info (dumps, memory flags)
+    Memory  = 65504,    // Memory info (dumps, memory flags)
+    Stream  = 65505     // Debug stream (Telnet, JSON Lines output)
 };
 
 } // namespace debugserver

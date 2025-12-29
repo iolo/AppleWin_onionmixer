@@ -31,6 +31,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 #include "HttpRequest.h"
 #include "HttpResponse.h"
+#include "SocketUtils.h"
 
 #include <string>
 #include <functional>
@@ -40,44 +41,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #include <vector>
 #include <memory>
 
-// Platform-specific socket includes
-#ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
-    #endif
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    #ifdef _MSC_VER
-    #pragma comment(lib, "ws2_32.lib")
-    #endif
-#else
-    #include <sys/socket.h>
-    #include <sys/types.h>
-    #include <netinet/in.h>
-    #include <netinet/tcp.h>
-    #include <arpa/inet.h>
-    #include <unistd.h>
-    #include <fcntl.h>
-    #include <errno.h>
-    #include <poll.h>
-#endif
-
 namespace debugserver {
-
-// Socket type abstraction
-#ifdef _WIN32
-    using socket_t = SOCKET;
-    constexpr socket_t INVALID_SOCKET_VALUE = INVALID_SOCKET;
-    constexpr int SOCKET_ERROR_VALUE = SOCKET_ERROR;
-    inline int CloseSocket(socket_t s) { return closesocket(s); }
-    inline int GetLastSocketError() { return WSAGetLastError(); }
-#else
-    using socket_t = int;
-    constexpr socket_t INVALID_SOCKET_VALUE = -1;
-    constexpr int SOCKET_ERROR_VALUE = -1;
-    inline int CloseSocket(socket_t s) { return close(s); }
-    inline int GetLastSocketError() { return errno; }
-#endif
 
 class HttpServer {
 public:

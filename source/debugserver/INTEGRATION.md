@@ -35,16 +35,19 @@ void InitialiseEmulator(const AppMode_e mode)
     DebugInitialize();
     KeybReset();
 
-    // === ADD THIS: Start Debug HTTP Server ===
+    // === ADD THIS: Start Debug Server (HTTP + Stream) ===
     if (DebugServer_Start()) {
-        LogFileOutput("Debug HTTP Server started on ports 65501-65504\n");
+        LogFileOutput("Debug Server started on ports 65501-65505\n");
     }
+
+    // === OPTIONAL: Enable streaming by default ===
+    DebugServer_SetStreamEnabled(true);
 }
 
 // Modify DestroyEmulator() - add at the beginning:
 void DestroyEmulator()
 {
-    // === ADD THIS: Stop Debug HTTP Server first ===
+    // === ADD THIS: Stop Debug Server first ===
     DebugServer_Stop();
 
     CardManager &cardManager = GetCardMgr();
@@ -140,6 +143,8 @@ void DestroyEmulator()
 
 ## Testing the Integration
 
+### HTTP Servers (Pull-based)
+
 1. Build and run AppleWin
 2. Open browser to: http://127.0.0.1:65501/
 3. You should see the Machine Info dashboard
@@ -147,6 +152,24 @@ void DestroyEmulator()
    - http://127.0.0.1:65502/ - I/O Info
    - http://127.0.0.1:65503/ - CPU Info
    - http://127.0.0.1:65504/ - Memory Info
+
+### Stream Server (Push-based)
+
+1. Connect to the stream server:
+   ```bash
+   telnet 127.0.0.1 65505
+   # or
+   nc 127.0.0.1 65505
+   ```
+
+2. You should see JSON Lines output:
+   ```json
+   {"emu":"apple","cat":"sys","sec":"conn","fld":"hello","val":"1.0","ts":...}
+   {"emu":"apple","cat":"mach","sec":"info","fld":"type","val":"Apple2e"}
+   {"emu":"apple","cat":"cpu","sec":"reg","fld":"all","val":"A=00 X=00 ...","ts":...}
+   ```
+
+3. When stepping through code in the debugger, you'll see real-time updates
 
 ## API Testing with curl
 
@@ -162,4 +185,33 @@ curl "http://127.0.0.1:65504/api/dump?addr=\$C600&lines=8"
 
 # Breakpoints
 curl http://127.0.0.1:65503/api/breakpoints
+```
+
+## Stream Integration in Debugger
+
+The stream server automatically broadcasts events from `Debug.cpp`:
+
+```cpp
+// In source/Debugger/Debug.cpp
+
+// After CPU single step (in DebugContinueStepping):
+if (DebugServer_IsStreamEnabled()) {
+    auto& manager = debugserver::DebugServerManager::GetInstance();
+    auto* provider = manager.GetStreamProvider();
+    if (provider && manager.GetStreamServer() &&
+        manager.GetStreamServer()->GetClientCount() > 0) {
+        manager.BroadcastStreamData(provider->GetCPURegisters());
+    }
+}
+
+// After breakpoint hit:
+if (DebugServer_IsStreamEnabled() && g_bDebugBreakpointHit) {
+    auto& manager = debugserver::DebugServerManager::GetInstance();
+    auto* provider = manager.GetStreamProvider();
+    if (provider && manager.GetStreamServer()) {
+        int bpIndex = (g_breakpointHitID >= 0) ? g_breakpointHitID : 0;
+        manager.BroadcastStreamData(provider->GetBreakpointHit(bpIndex, regs.pc));
+        manager.BroadcastStreamData(provider->GetMachineStatus("break"));
+    }
+}
 ```

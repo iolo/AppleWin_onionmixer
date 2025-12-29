@@ -33,6 +33,7 @@ DebugServerManager& DebugServerManager::GetInstance() {
 
 DebugServerManager::DebugServerManager()
     : m_enabled(true)
+    , m_streamEnabled(true)
     , m_bindAddress("127.0.0.1")
     , m_running(false)
 {
@@ -41,6 +42,9 @@ DebugServerManager::DebugServerManager()
     m_cpuProvider = std::make_unique<CPUInfoProvider>();
     m_ioProvider = std::make_unique<IOInfoProvider>();
     m_memoryProvider = std::make_unique<MemoryInfoProvider>();
+
+    // Create stream provider
+    m_streamProvider = std::make_unique<DebugStreamProvider>();
 }
 
 DebugServerManager::~DebugServerManager() {
@@ -100,6 +104,19 @@ bool DebugServerManager::Start() {
             allStarted = false;
         }
 
+        // Stream Server (port 65505)
+        if (m_streamEnabled) {
+            m_streamServer = std::make_unique<TelnetStreamServer>(
+                static_cast<uint16_t>(DebugServerPort::Stream),
+                m_bindAddress);
+            m_streamServer->SetProvider(m_streamProvider.get());
+
+            if (!m_streamServer->Start()) {
+                m_lastError += "Stream server failed: " + m_streamServer->GetLastError() + "\n";
+                allStarted = false;
+            }
+        }
+
     } catch (const std::exception& e) {
         m_lastError = std::string("Exception: ") + e.what();
         allStarted = false;
@@ -118,6 +135,10 @@ bool DebugServerManager::Start() {
                   << static_cast<int>(DebugServerPort::CPU) << "/" << std::endl;
         std::cout << "  Memory Info:  http://" << m_bindAddress << ":"
                   << static_cast<int>(DebugServerPort::Memory) << "/" << std::endl;
+        if (m_streamEnabled && m_streamServer) {
+            std::cout << "  Debug Stream: telnet://" << m_bindAddress << ":"
+                      << static_cast<int>(DebugServerPort::Stream) << "/" << std::endl;
+        }
     } else {
         // Stop any servers that did start
         Stop();
@@ -128,7 +149,7 @@ bool DebugServerManager::Start() {
 
 void DebugServerManager::Stop() {
     if (!m_running.load() &&
-        !m_machineServer && !m_cpuServer && !m_ioServer && !m_memoryServer) {
+        !m_machineServer && !m_cpuServer && !m_ioServer && !m_memoryServer && !m_streamServer) {
         return;  // Nothing to stop
     }
 
@@ -153,6 +174,12 @@ void DebugServerManager::Stop() {
         m_memoryServer.reset();
     }
 
+    // Stop stream server
+    if (m_streamServer) {
+        m_streamServer->Stop();
+        m_streamServer.reset();
+    }
+
     m_running.store(false);
     std::cout << "AppleWin Debug Server stopped." << std::endl;
 }
@@ -174,7 +201,23 @@ std::vector<DebugServerManager::ServerStatus> DebugServerManager::GetServerStatu
     addStatus("CPU Info", static_cast<uint16_t>(DebugServerPort::CPU), m_cpuServer.get());
     addStatus("Memory Info", static_cast<uint16_t>(DebugServerPort::Memory), m_memoryServer.get());
 
+    // Add stream server status
+    {
+        ServerStatus s;
+        s.name = "Debug Stream";
+        s.port = static_cast<uint16_t>(DebugServerPort::Stream);
+        s.running = m_streamServer && m_streamServer->IsRunning();
+        s.error = m_streamServer ? m_streamServer->GetLastError() : "Not created";
+        status.push_back(s);
+    }
+
     return status;
+}
+
+void DebugServerManager::BroadcastStreamData(const std::string& data) {
+    if (m_streamServer && m_streamServer->IsRunning()) {
+        m_streamServer->Broadcast(data);
+    }
 }
 
 } // namespace debugserver
@@ -201,4 +244,18 @@ void DebugServer_SetEnabled(bool enabled) {
 
 bool DebugServer_IsEnabled(void) {
     return debugserver::DebugServerManager::GetInstance().IsEnabled();
+}
+
+void DebugServer_SetStreamEnabled(bool enabled) {
+    debugserver::DebugServerManager::GetInstance().SetStreamEnabled(enabled);
+}
+
+bool DebugServer_IsStreamEnabled(void) {
+    return debugserver::DebugServerManager::GetInstance().IsStreamEnabled();
+}
+
+void DebugServer_BroadcastStream(const char* data) {
+    if (data) {
+        debugserver::DebugServerManager::GetInstance().BroadcastStreamData(data);
+    }
 }
