@@ -948,6 +948,87 @@ std::vector<std::string> DebugStreamProvider::GetFullSnapshot() {
 }
 
 //-----------------------------------------------------------------------------
+// Periodic Update (for continuous streaming)
+//-----------------------------------------------------------------------------
+
+std::vector<std::string> DebugStreamProvider::GetPeriodicUpdate() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<std::string> lines;
+
+    // Add timestamp to track update timing
+    std::map<std::string, std::string> tsExtra;
+    tsExtra["ts"] = std::to_string(GetTimestamp());
+
+    // CPU registers with timestamp
+    lines.push_back(FormatLine("cpu", "reg", "pc", ToHex16(regs.pc), tsExtra));
+    lines.push_back(FormatLine("cpu", "reg", "a", ToHex8(regs.a)));
+    lines.push_back(FormatLine("cpu", "reg", "x", ToHex8(regs.x)));
+    lines.push_back(FormatLine("cpu", "reg", "y", ToHex8(regs.y)));
+    lines.push_back(FormatLine("cpu", "reg", "sp", ToHex8(static_cast<uint8_t>(regs.sp & 0xFF))));
+    lines.push_back(FormatLine("cpu", "reg", "p", ToHex8(regs.ps)));
+
+    // CPU flags
+    uint8_t ps = regs.ps;
+    lines.push_back(FormatLine("cpu", "flag", "n", (ps & AF_SIGN) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "v", (ps & AF_OVERFLOW) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "b", (ps & AF_BREAK) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "d", (ps & AF_DECIMAL) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "i", (ps & AF_INTERRUPT) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "z", (ps & AF_ZERO) ? "1" : "0"));
+    lines.push_back(FormatLine("cpu", "flag", "c", (ps & AF_CARRY) ? "1" : "0"));
+
+    // Memory mode flags
+    UINT memMode = GetMemMode();
+    lines.push_back(FormatLine("mem", "flag", "80store", (memMode & MF_80STORE) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "auxRead", (memMode & MF_AUXREAD) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "auxWrite", (memMode & MF_AUXWRITE) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "altZP", (memMode & MF_ALTZP) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "highRam", (memMode & MF_HIGHRAM) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "bank2", (memMode & MF_BANK2) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "writeRam", (memMode & MF_WRITERAM) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "page2", (memMode & MF_PAGE2) ? "1" : "0"));
+    lines.push_back(FormatLine("mem", "flag", "hires", (memMode & MF_HIRES) ? "1" : "0"));
+
+    // I/O Soft switches
+    lines.push_back(FormatLine("io", "switch", "80store", (memMode & MF_80STORE) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "ramrd", (memMode & MF_AUXREAD) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "ramwrt", (memMode & MF_AUXWRITE) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "altzp", (memMode & MF_ALTZP) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "page2", (memMode & MF_PAGE2) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "hires", (memMode & MF_HIRES) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "lcram", (memMode & MF_HIGHRAM) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "lcbank2", (memMode & MF_BANK2) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "lcwrite", (memMode & MF_WRITERAM) ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "intcxrom", MemCheckINTCXROM() ? "1" : "0"));
+    lines.push_back(FormatLine("io", "switch", "slotc3rom", MemCheckSLOTC3ROM() ? "1" : "0"));
+
+    // Annunciators
+    for (int i = 0; i < 4; i++) {
+        std::map<std::string, std::string> annExtra;
+        annExtra["idx"] = std::to_string(i);
+        lines.push_back(FormatLine("io", "ann", "state", MemGetAnnunciator(i) ? "1" : "0", annExtra));
+    }
+
+    // Machine status
+    const char* mode = "unknown";
+    switch (g_nAppMode) {
+        case MODE_LOGO:      mode = "logo"; break;
+        case MODE_RUNNING:   mode = "running"; break;
+        case MODE_DEBUG:     mode = "debug"; break;
+        case MODE_STEPPING:  mode = "stepping"; break;
+        case MODE_PAUSED:    mode = "paused"; break;
+        case MODE_BENCHMARK: mode = "benchmark"; break;
+        default: break;
+    }
+    lines.push_back(FormatLine("mach", "status", "mode", mode));
+
+    // Cumulative cycles
+    lines.push_back(FormatLine("mach", "info", "cycles", std::to_string(g_nCumulativeCycles)));
+
+    return lines;
+}
+
+//-----------------------------------------------------------------------------
 // Utility Methods
 //-----------------------------------------------------------------------------
 

@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 #include <algorithm>
 #include <cstring>
+#include <chrono>
 
 namespace debugserver {
 
@@ -74,6 +75,8 @@ TelnetStreamServer::TelnetStreamServer(uint16_t port, const std::string& bindAdd
     , m_running(false)
     , m_shouldStop(false)
     , m_provider(nullptr)
+    , m_periodicBroadcastEnabled(true)
+    , m_broadcastIntervalMs(100)
 {
 }
 
@@ -107,6 +110,11 @@ bool TelnetStreamServer::Start() {
         AcceptLoop();
     });
 
+    // Start periodic broadcast thread
+    m_broadcastThread = std::thread([this]() {
+        BroadcastLoop();
+    });
+
     return true;
 }
 
@@ -124,6 +132,11 @@ void TelnetStreamServer::Stop() {
     // Wait for accept thread to finish
     if (m_acceptThread.joinable()) {
         m_acceptThread.join();
+    }
+
+    // Wait for broadcast thread to finish
+    if (m_broadcastThread.joinable()) {
+        m_broadcastThread.join();
     }
 
     // Close all client connections
@@ -325,7 +338,7 @@ void TelnetStreamServer::SendTelnetInit(socket_t clientSocket) {
         0xFF, 0xFB, 0x03,  // IAC WILL SUPPRESS-GO-AHEAD
     };
 
-    send(clientSocket, reinterpret_cast<const char*>(initSeq), sizeof(initSeq), 0);
+    SafeSend(clientSocket, initSeq, sizeof(initSeq));
 }
 
 void TelnetStreamServer::SendWelcome(socket_t clientSocket) {
@@ -334,14 +347,14 @@ void TelnetStreamServer::SendWelcome(socket_t clientSocket) {
         std::string hello = m_provider->GetHelloMessage();
         if (!hello.empty()) {
             hello += "\r\n";
-            send(clientSocket, hello.c_str(), static_cast<int>(hello.size()), 0);
+            SafeSend(clientSocket, hello.c_str(), hello.size());
         }
 
         // Send initial snapshot
         auto snapshot = m_provider->GetFullSnapshot();
         for (const auto& line : snapshot) {
             std::string data = line + "\r\n";
-            send(clientSocket, data.c_str(), static_cast<int>(data.size()), 0);
+            SafeSend(clientSocket, data.c_str(), data.size());
         }
     }
 }
@@ -365,12 +378,12 @@ bool TelnetStreamServer::SendToClient(socket_t clientSocket, const std::string& 
     const char* ptr = line.c_str();
 
     while (remaining > 0) {
-        int sent = send(clientSocket, ptr + totalSent, remaining, 0);
+        ssize_t sent = SafeSend(clientSocket, ptr + totalSent, remaining);
         if (sent == SOCKET_ERROR_VALUE) {
             return false;
         }
-        totalSent += sent;
-        remaining -= sent;
+        totalSent += static_cast<int>(sent);
+        remaining -= static_cast<int>(sent);
     }
 
     return true;
@@ -391,7 +404,7 @@ void TelnetStreamServer::Broadcast(const std::string& data) {
 
     for (socket_t client : m_clients) {
         if (client != INVALID_SOCKET_VALUE) {
-            int result = send(client, line.c_str(), static_cast<int>(line.size()), 0);
+            ssize_t result = SafeSend(client, line.c_str(), line.size());
             if (result == SOCKET_ERROR_VALUE) {
                 deadClients.push_back(client);
             }
@@ -411,6 +424,41 @@ void TelnetStreamServer::Broadcast(const std::string& data) {
 size_t TelnetStreamServer::GetClientCount() const {
     std::lock_guard<std::mutex> lock(m_clientsMutex);
     return m_clients.size();
+}
+
+void TelnetStreamServer::BroadcastLoop() {
+    while (!m_shouldStop.load()) {
+        // Only broadcast if enabled and there are connected clients
+        if (m_periodicBroadcastEnabled.load() && GetClientCount() > 0 && m_provider) {
+            // Get periodic update from provider
+            auto snapshot = m_provider->GetPeriodicUpdate();
+            for (const auto& line : snapshot) {
+                Broadcast(line);
+            }
+        }
+
+        // Wait for the configured interval
+        int intervalMs = m_broadcastIntervalMs.load();
+        if (intervalMs < 10) intervalMs = 10;  // Minimum 10ms
+        if (intervalMs > 10000) intervalMs = 10000;  // Maximum 10 seconds
+
+        // Sleep in small increments to allow quick shutdown
+        int elapsed = 0;
+        while (elapsed < intervalMs && !m_shouldStop.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            elapsed += 10;
+        }
+    }
+}
+
+void TelnetStreamServer::SetBroadcastInterval(int intervalMs) {
+    if (intervalMs < 10) intervalMs = 10;
+    if (intervalMs > 10000) intervalMs = 10000;
+    m_broadcastIntervalMs.store(intervalMs);
+}
+
+void TelnetStreamServer::SetPeriodicBroadcastEnabled(bool enabled) {
+    m_periodicBroadcastEnabled.store(enabled);
 }
 
 } // namespace debugserver

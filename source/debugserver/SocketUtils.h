@@ -57,14 +57,23 @@ namespace debugserver {
     using socket_t = SOCKET;
     constexpr socket_t INVALID_SOCKET_VALUE = INVALID_SOCKET;
     constexpr int SOCKET_ERROR_VALUE = SOCKET_ERROR;
+    constexpr int SEND_FLAGS = 0;  // Windows doesn't need special flags
     inline int CloseSocket(socket_t s) { return closesocket(s); }
     inline int GetLastSocketError() { return WSAGetLastError(); }
 #else
     using socket_t = int;
     constexpr socket_t INVALID_SOCKET_VALUE = -1;
     constexpr int SOCKET_ERROR_VALUE = -1;
+    // MSG_NOSIGNAL prevents SIGPIPE signal when client disconnects
+    // Without this, writing to a closed socket kills the process
+    constexpr int SEND_FLAGS = MSG_NOSIGNAL;
     inline int CloseSocket(socket_t s) { return close(s); }
     inline int GetLastSocketError() { return errno; }
 #endif
+
+// Safe send wrapper that uses appropriate flags for each platform
+inline ssize_t SafeSend(socket_t s, const void* buf, size_t len) {
+    return send(s, static_cast<const char*>(buf), static_cast<int>(len), SEND_FLAGS);
+}
 
 } // namespace debugserver

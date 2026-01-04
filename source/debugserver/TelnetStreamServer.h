@@ -105,7 +105,15 @@ public:
     // Get number of connected clients
     size_t GetClientCount() const;
 
+    // Periodic broadcast settings
+    void SetBroadcastInterval(int intervalMs);
+    int GetBroadcastInterval() const { return m_broadcastIntervalMs.load(); }
+    void SetPeriodicBroadcastEnabled(bool enabled);
+    bool IsPeriodicBroadcastEnabled() const { return m_periodicBroadcastEnabled.load(); }
+
 private:
+    // Periodic broadcast loop (runs in separate thread)
+    void BroadcastLoop();
     // Main accept loop (runs in separate thread)
     void AcceptLoop();
 
@@ -149,6 +157,11 @@ private:
 
     // Provider for generating initial state
     DebugStreamProvider* m_provider;
+
+    // Periodic broadcast
+    std::thread m_broadcastThread;
+    std::atomic<bool> m_periodicBroadcastEnabled;
+    std::atomic<int> m_broadcastIntervalMs;
 
     // Callback for new client connections
     OnClientConnected m_onClientConnected;

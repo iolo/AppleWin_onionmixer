@@ -426,11 +426,7 @@ bool HttpServer::SendResponse(socket_t clientSocket, const std::string& response
     size_t remaining = response.size();
 
     while (remaining > 0) {
-#ifdef _WIN32
-        int sent = send(clientSocket, data + totalSent, static_cast<int>(remaining), 0);
-#else
-        ssize_t sent = send(clientSocket, data + totalSent, remaining, 0);
-#endif
+        ssize_t sent = SafeSend(clientSocket, data + totalSent, remaining);
 
         if (sent > 0) {
             totalSent += sent;

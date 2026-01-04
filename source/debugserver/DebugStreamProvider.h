@@ -203,6 +203,10 @@ public:
     // Now includes all data from 65501-65504
     std::vector<std::string> GetFullSnapshot();
 
+    // Get periodic update (simplified state for continuous streaming)
+    // Returns CPU registers with timestamp for efficient periodic broadcast
+    std::vector<std::string> GetPeriodicUpdate();
+
     //-------------------------------------------------------------------------
     // Utility Methods
     //-------------------------------------------------------------------------
