@@ -67,6 +67,39 @@ curl http://127.0.0.1:65502/api/slots
 
 See [Debug Server Documentation](/source/debugserver/README.md) for full API reference.
 
+### Debug Stream Server (Telnet)
+
+A real-time debug streaming server provides continuous emulator state output via TCP/Telnet connection. Data is output in JSON Lines format, suitable for real-time monitoring and integration with external tools.
+
+| Port  | Description | Connection |
+|-------|-------------|------------|
+| 65505 | Debug Stream (JSON Lines) | `telnet 127.0.0.1 65505` or `nc 127.0.0.1 65505` |
+
+**Output Format (JSON Lines):**
+
+Each line is an independent JSON object with the following structure:
+```json
+{"emu":"apple","cat":"cpu","sec":"reg","fld":"pc","val":"C600"}
+{"emu":"apple","cat":"cpu","sec":"reg","fld":"a","val":"00"}
+{"emu":"apple","cat":"mem","sec":"write","fld":"byte","val":"20","addr":"0300"}
+```
+
+**Usage Examples:**
+
+```bash
+# Connect and view real-time stream
+telnet 127.0.0.1 65505
+
+# Using netcat
+nc 127.0.0.1 65505
+
+# Filter CPU register changes
+nc 127.0.0.1 65505 | grep '"cat":"cpu"'
+
+# Save to file
+nc 127.0.0.1 65505 > debug_log.jsonl
+```
+
 ## Executables
 
 ### sa2
